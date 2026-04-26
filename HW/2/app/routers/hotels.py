@@ -27,14 +27,15 @@ def list_hotels():
     return [HotelOut(**h) for h in hotels.values()]
 
 
+# важно: /search должен быть выше /{hotel_id}, иначе fastapi примет "search" как hotel_id
 @router.get("/search", response_model=list[HotelOut])
 def search_hotels_by_city(city: str = Query(..., description="City name (case-insensitive substring)")):
-    results = [
+    res = [
         HotelOut(**h)
         for h in hotels.values()
         if city.lower() in h["city"].lower()
     ]
-    return results
+    return res
 
 
 @router.get("/{hotel_id}", response_model=HotelOut)

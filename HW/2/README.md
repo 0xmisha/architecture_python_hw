@@ -1,39 +1,22 @@
-# Домашнее задание 02: REST API — Система бронирования отелей
+# ДЗ 2 — REST API бронирование отелей
 **Федотов Михаил Андреевич М8О-107СВ-25**
 
+Вариант 13. Сделал REST API для системы бронирования, типа booking.com только сильно упрощённо.
 
-**Вариант 13** — Система бронирования отелей (Booking.com)
+## Что внутри
 
-## Описание
+Три сущности: пользователи, отели, бронирования. Хранилище — обычные словари в памяти, без базы данных (это уже в следующем ДЗ).
 
-REST API сервис для бронирования отелей, реализованный на Python FastAPI.
+Фреймворк выбрал FastAPI, потому что с ним удобно работать через автоматический swagger и типизацию через pydantic. JWT для авторизации — стандартная схема, токен живёт 60 минут.
 
-### Сущности
+## Как запустить
 
-- **Пользователь** — регистрация, аутентификация, поиск
-- **Отель** — создание, просмотр, поиск по городу
-- **Бронирование** — создание, просмотр, отмена
-
-### Стек технологий
-
-- Python 3.12 + FastAPI
-- JWT аутентификация (python-jose + passlib/bcrypt)
-- In-memory хранилище (dict)
-- Pydantic DTO
-- pytest для тестирования
-
-## Запуск
-
-### Docker
-
+Через докер проще всего:
 ```bash
 docker compose up --build
 ```
 
-API доступно по адресу: http://localhost:8000
-
-### Локально
-
+Или локально если не хочется докер:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -41,121 +24,50 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-## Swagger UI
+Swagger открывается на http://localhost:8000/docs — там можно потыкать все ручки прямо в браузере без curl.
 
-После запуска доступен по адресу: http://localhost:8000/docs
+## Эндпоинты
 
-OpenAPI спецификация также находится в файле `openapi.yaml`.
+**Авторизация** (без токена):
+- `POST /api/auth/register` — регистрация
+- `POST /api/auth/login` — логин, отдаёт JWT
 
-## API Endpoints
+**Пользователи** (нужен токен):
+- `GET /api/users/search?login=ivan` — точный поиск по логину
+- `GET /api/users/search?name=ван` — поиск по подстроке в имени или фамилии
+- `GET /api/users/{id}`
 
-### Auth
+**Отели** (создание требует токен, чтение — нет):
+- `POST /api/hotels`
+- `GET /api/hotels` — все отели
+- `GET /api/hotels/search?city=москва` — поиск по городу, регистронезависимый
+- `GET /api/hotels/{id}`
 
-| Метод | URL | Описание | Аутентификация |
-|-------|-----|----------|----------------|
-| POST | `/api/auth/register` | Регистрация пользователя | Нет |
-| POST | `/api/auth/login` | Логин, получение JWT токена | Нет |
+**Бронирования** (всё требует токен):
+- `POST /api/bookings` — создать бронь, цена считается автоматически из количества ночей
+- `GET /api/bookings/my` — свои брони
+- `GET /api/bookings/{id}` — конкретная бронь (только своя)
+- `DELETE /api/bookings/{id}` — отмена
 
-### Users
-
-| Метод | URL | Описание | Аутентификация |
-|-------|-----|----------|----------------|
-| GET | `/api/users/search?login=...` | Поиск по логину | JWT |
-| GET | `/api/users/search?name=...` | Поиск по маске имя/фамилии | JWT |
-| GET | `/api/users/{user_id}` | Получение пользователя по ID | JWT |
-
-### Hotels
-
-| Метод | URL | Описание | Аутентификация |
-|-------|-----|----------|----------------|
-| POST | `/api/hotels` | Создание отеля | JWT |
-| GET | `/api/hotels` | Список всех отелей | Нет |
-| GET | `/api/hotels/search?city=...` | Поиск отелей по городу | Нет |
-| GET | `/api/hotels/{hotel_id}` | Получение отеля по ID | Нет |
-
-### Bookings
-
-| Метод | URL | Описание | Аутентификация |
-|-------|-----|----------|----------------|
-| POST | `/api/bookings` | Создание бронирования | JWT |
-| GET | `/api/bookings/my` | Бронирования текущего пользователя | JWT |
-| GET | `/api/bookings/{booking_id}` | Получение бронирования по ID | JWT |
-| DELETE | `/api/bookings/{booking_id}` | Отмена бронирования | JWT |
-
-## Примеры использования
-
-### Регистрация
+## Тесты
 
 ```bash
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"login":"ivan","password":"pass1234","first_name":"Ivan","last_name":"Petrov","email":"ivan@example.com"}'
-```
-
-### Логин
-
-```bash
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"login":"ivan","password":"pass1234"}'
-```
-
-### Создание отеля (с токеном)
-
-```bash
-curl -X POST http://localhost:8000/api/hotels \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <TOKEN>" \
-  -d '{"name":"Grand Hotel","city":"Moscow","address":"Tverskaya 1","stars":5,"rooms_total":100,"price_per_night":5000}'
-```
-
-### Создание бронирования
-
-```bash
-curl -X POST http://localhost:8000/api/bookings \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <TOKEN>" \
-  -d '{"hotel_id":"<HOTEL_ID>","check_in":"2026-06-01","check_out":"2026-06-05"}'
-```
-
-### Отмена бронирования
-
-```bash
-curl -X DELETE http://localhost:8000/api/bookings/<BOOKING_ID> \
-  -H "Authorization: Bearer <TOKEN>"
-```
-
-## Тестирование
-
-```bash
-source .venv/bin/activate
 python -m pytest tests/ -v
 ```
 
-20 тестов покрывают все endpoints: успешные сценарии, ошибки валидации, авторизацию и обработку несуществующих ресурсов.
+Написал 20 тестов, покрывают основные сценарии — успешные запросы, попытки получить чужие данные, невалидные входные данные. Тесты через httpx с TestClient, без поднятия реального сервера.
 
-## Структура проекта
+## Структура
 
 ```
-HW/2/
-├── app/
-│   ├── __init__.py
-│   ├── main.py            # FastAPI приложение
-│   ├── auth.py            # JWT аутентификация
-│   ├── database.py        # In-memory хранилище
-│   ├── schemas.py         # Pydantic DTO
-│   └── routers/
-│       ├── __init__.py
-│       ├── auth.py        # /api/auth/*
-│       ├── users.py       # /api/users/*
-│       ├── hotels.py      # /api/hotels/*
-│       └── bookings.py    # /api/bookings/*
-├── tests/
-│   ├── __init__.py
-│   └── test_api.py        # 20 тестов
-├── openapi.yaml           # OpenAPI 3.0 спецификация
-├── Dockerfile
-├── docker-compose.yaml
-├── requirements.txt
-└── README.md
+app/
+  main.py        — точка входа
+  auth.py        — JWT логика
+  database.py    — словари-хранилища и генератор id
+  schemas.py     — pydantic модели
+  routers/       — по файлу на каждую сущность
+tests/
+  test_api.py
 ```
+
+Спецификация openapi.yaml сгенерирована из FastAPI автоматически.

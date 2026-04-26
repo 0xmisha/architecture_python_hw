@@ -21,6 +21,7 @@ def search_users(
         if login and u["login"] == login:
             results.append(_out(u))
         elif name:
+            # ищем подстроку в полном имени, можно было и отдельно по first/last но так проще
             full = f"{u['first_name']} {u['last_name']}".lower()
             if name.lower() in full:
                 results.append(_out(u))

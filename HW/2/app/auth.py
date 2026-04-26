@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 
 from app.database import users
 
+# в реальном проекте это должно быть в переменных окружения, не в коде
 SECRET_KEY = "super-secret-key-for-hw2"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -34,6 +35,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
+        # проверяем что user_id есть в токене и такой пользователь существует
         if user_id is None or user_id not in users:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     except JWTError:

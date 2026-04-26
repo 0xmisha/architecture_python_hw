@@ -21,9 +21,9 @@ def create_booking(data: BookingCreate, current_user: dict = Depends(get_current
     nights = (data.check_out - data.check_in).days
     total_price = nights * hotel["price_per_night"]
 
-    booking_id = generate_id()
-    bookings[booking_id] = {
-        "id": booking_id,
+    bid = generate_id()
+    bookings[bid] = {
+        "id": bid,
         "user_id": current_user["id"],
         "hotel_id": data.hotel_id,
         "hotel_name": hotel["name"],
@@ -33,16 +33,13 @@ def create_booking(data: BookingCreate, current_user: dict = Depends(get_current
         "status": "confirmed",
         "created_at": datetime.now(timezone.utc),
     }
-    return BookingOut(**bookings[booking_id])
+    return BookingOut(**bookings[bid])
 
 
 @router.get("/my", response_model=list[BookingOut])
 def get_my_bookings(current_user: dict = Depends(get_current_user)):
-    return [
-        BookingOut(**b)
-        for b in bookings.values()
-        if b["user_id"] == current_user["id"]
-    ]
+    # фильтруем по user_id текущего пользователя
+    return [BookingOut(**b) for b in bookings.values() if b["user_id"] == current_user["id"]]
 
 
 @router.get("/{booking_id}", response_model=BookingOut)
