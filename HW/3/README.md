@@ -1,157 +1,111 @@
-# HW3 — Проектирование и оптимизация реляционной БД
+# HW3 — Реляционная БД для системы бронирования отелей
 **Федотов Михаил Андреевич М8О-107СВ-25**
 
+Вариант 13, booking.com-подобная система.
 
-**Вариант 13 — Система бронирования отелей** (аналог [booking.com](https://www.booking.com/))
+## Про схему
 
-## Схема базы данных
-
-### Сущности
-
-| Таблица | Описание |
-|---|---|
-| `users` | Пользователи системы |
-| `hotels` | Отели |
-| `bookings` | Бронирования |
-
-### ER-диаграмма
+Три таблицы: пользователи, отели, бронирования. Связи очевидные — бронирование ссылается на обе остальные через FK.
 
 ```
 users ──< bookings >── hotels
 ```
 
-### Таблица `users`
+### users
 
-| Колонка | Тип | Ограничения |
+| Колонка | Тип | Примечания |
 |---|---|---|
-| id | UUID | PK, DEFAULT gen_random_uuid() |
-| login | VARCHAR(50) | NOT NULL, UNIQUE |
-| password_hash | VARCHAR(255) | NOT NULL |
-| first_name | VARCHAR(100) | NOT NULL |
-| last_name | VARCHAR(100) | NOT NULL |
-| email | VARCHAR(255) | NOT NULL, UNIQUE |
-| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
+| id | UUID | gen_random_uuid() |
+| login | VARCHAR(50) | уникальный |
+| password_hash | VARCHAR(255) | bcrypt |
+| first_name | VARCHAR(100) | |
+| last_name | VARCHAR(100) | |
+| email | VARCHAR(255) | уникальный |
+| created_at | TIMESTAMPTZ | |
 
-### Таблица `hotels`
+### hotels
 
-| Колонка | Тип | Ограничения |
+| Колонка | Тип | Примечания |
 |---|---|---|
-| id | UUID | PK, DEFAULT gen_random_uuid() |
-| name | VARCHAR(255) | NOT NULL |
-| city | VARCHAR(100) | NOT NULL |
-| address | VARCHAR(500) | NOT NULL |
-| stars | SMALLINT | NOT NULL, CHECK 1–5 |
-| rooms_total | INTEGER | NOT NULL, CHECK > 0 |
-| price_per_night | NUMERIC(12,2) | NOT NULL, CHECK > 0 |
-| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
+| id | UUID | |
+| name | VARCHAR(255) | |
+| city | VARCHAR(100) | |
+| address | VARCHAR(500) | |
+| stars | SMALLINT | CHECK 1–5 |
+| rooms_total | INTEGER | CHECK > 0 |
+| price_per_night | NUMERIC(12,2) | CHECK > 0 |
+| created_at | TIMESTAMPTZ | |
 
-### Таблица `bookings`
+### bookings
 
-| Колонка | Тип | Ограничения |
+| Колонка | Тип | Примечания |
 |---|---|---|
-| id | UUID | PK, DEFAULT gen_random_uuid() |
-| user_id | UUID | NOT NULL, FK → users(id) |
-| hotel_id | UUID | NOT NULL, FK → hotels(id) |
-| check_in | DATE | NOT NULL |
-| check_out | DATE | NOT NULL, CHECK > check_in |
-| total_price | NUMERIC(12,2) | NOT NULL, CHECK >= 0 |
-| status | VARCHAR(20) | NOT NULL, CHECK IN ('confirmed','cancelled') |
-| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
+| id | UUID | |
+| user_id | UUID | FK → users |
+| hotel_id | UUID | FK → hotels |
+| check_in | DATE | |
+| check_out | DATE | CHECK > check_in |
+| total_price | NUMERIC(12,2) | считается при создании |
+| status | VARCHAR(20) | confirmed / cancelled |
+| created_at | TIMESTAMPTZ | |
 
-## Индексы
+## Про индексы
 
-| Индекс | Тип | Обоснование |
+Самое интересное в этом задании. Сначала поставил просто B-tree на всё подряд, потом понял что ILIKE '%москва%' с ведущим процентом по B-tree вообще не работает — нужен GIN + расширение pg_trgm. Поэтому для поиска по имени и городу именно GIN.
+
+Составной индекс `(user_id, status)` на bookings — чтобы не фильтровать по статусу после выборки по пользователю. Без него postgres делал index scan по user_id а потом ещё фильтровал строки в памяти.
+
+| Индекс | Тип | Зачем |
 |---|---|---|
-| `uq_users_login` | UNIQUE B-tree | Гарантия уникальности логина |
-| `idx_users_login` | B-tree | Быстрый поиск при логине |
-| `idx_users_first_name` | GIN trgm | ILIKE-поиск по имени |
-| `idx_users_last_name` | GIN trgm | ILIKE-поиск по фамилии |
-| `idx_hotels_city` | GIN trgm | ILIKE-поиск отелей по городу |
-| `idx_hotels_stars` | B-tree | Фильтрация по звёздности |
-| `idx_bookings_user_id` | B-tree | Все брони пользователя |
-| `idx_bookings_hotel_id` | B-tree | Аналитика по отелю |
-| `idx_bookings_user_status` | B-tree (составной) | Активные брони пользователя |
-| `idx_bookings_dates` | B-tree (составной) | Проверка пересечения дат |
+| uq_users_login | UNIQUE B-tree | уникальность + поиск при логине |
+| idx_users_first_name | GIN trgm | ILIKE поиск по имени |
+| idx_users_last_name | GIN trgm | ILIKE поиск по фамилии |
+| idx_hotels_city | GIN trgm | ILIKE поиск по городу |
+| idx_hotels_stars | B-tree | фильтр по звёздам |
+| idx_bookings_user_id | B-tree | все брони пользователя |
+| idx_bookings_hotel_id | B-tree | нужен для FK constraint и аналитики |
+| idx_bookings_user_status | B-tree составной | активные брони без лишней фильтрации |
+| idx_bookings_dates | B-tree составной | проверка пересечения дат при бронировании |
 
-## Структура файлов
+## Файлы
 
-```
-HW/3/
-├── app/
-│   ├── main.py          # FastAPI приложение
-│   ├── database.py      # SQLAlchemy engine + session
-│   ├── models.py        # ORM-модели
-│   ├── schemas.py       # Pydantic-схемы
-│   ├── auth.py          # JWT-аутентификация
-│   └── routers/
-│       ├── auth.py      # POST /api/auth/register, /login
-│       ├── users.py     # GET  /api/users/search, /{id}
-│       ├── hotels.py    # CRUD /api/hotels
-│       └── bookings.py  # CRUD /api/bookings
-├── schema.sql           # DDL: CREATE TABLE + индексы
-├── data.sql             # DML: тестовые данные
-├── queries.sql          # Все API-запросы в виде SQL
-├── optimization.md      # Анализ планов EXPLAIN + оптимизации
-├── Dockerfile
-├── docker-compose.yaml
-└── requirements.txt
-```
+- `schema.sql` — CREATE TABLE + все индексы
+- `data.sql` — тестовые данные (10+ записей в каждой таблице)
+- `queries.sql` — SQL для всех операций из варианта
+- `optimization.md` — EXPLAIN до/после, там подробнее про конкретные планы
 
-## API
-
-| Метод | Эндпоинт | Авторизация | Описание |
-|---|---|---|---|
-| POST | /api/auth/register | — | Создание нового пользователя |
-| POST | /api/auth/login | — | Получение JWT-токена |
-| GET | /api/users/search?login= | JWT | Поиск пользователя по логину |
-| GET | /api/users/search?name= | JWT | Поиск по маске имени/фамилии |
-| GET | /api/users/{id} | JWT | Получение пользователя по ID |
-| POST | /api/hotels | JWT | Создание отеля |
-| GET | /api/hotels | — | Список всех отелей |
-| GET | /api/hotels/search?city= | — | Поиск отелей по городу |
-| GET | /api/hotels/{id} | — | Получение отеля по ID |
-| POST | /api/bookings | JWT | Создание бронирования |
-| GET | /api/bookings/my | JWT | Бронирования текущего пользователя |
-| GET | /api/bookings/{id} | JWT | Получение бронирования по ID |
-| DELETE | /api/bookings/{id} | JWT | Отмена бронирования |
+Само API в папке `app/`, структура та же что в HW2 только база данных теперь реальная через SQLAlchemy, а не словари в памяти.
 
 ## Запуск
 
 ```bash
-# Запуск PostgreSQL + API
 docker-compose up --build
-
-# API доступно на http://localhost:8000
-# Swagger UI: http://localhost:8000/docs
 ```
 
-### Ручной запуск (без Docker)
+Поднимает postgres и api вместе. API на http://localhost:8000, swagger на /docs.
+
+Если хочется без докера:
 
 ```bash
-# 1. Создать базу данных
 psql -U postgres -c "CREATE DATABASE hotel_booking;"
 psql -U postgres -d hotel_booking -f schema.sql
 psql -U postgres -d hotel_booking -f data.sql
 
-# 2. Запустить API
 pip install -r requirements.txt
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hotel_booking \
-    uvicorn app.main:app --reload
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hotel_booking uvicorn app.main:app --reload
 ```
 
-## Тестирование
+## Эндпоинты
 
-```bash
-# Регистрация
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"login":"test","password":"pass1","first_name":"Test","last_name":"User","email":"t@t.com"}'
-
-# Логин
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"login":"test","password":"pass1"}'
-
-# Поиск отелей по городу
-curl "http://localhost:8000/api/hotels/search?city=Москва"
-```
+| Метод | Путь | Auth | Что делает |
+|---|---|---|---|
+| POST | /api/auth/register | — | регистрация |
+| POST | /api/auth/login | — | логин, возвращает JWT |
+| GET | /api/users/search?login= | JWT | поиск по логину |
+| GET | /api/users/search?name= | JWT | поиск по маске имени/фамилии |
+| POST | /api/hotels | JWT | создать отель |
+| GET | /api/hotels | — | список всех |
+| GET | /api/hotels/search?city= | — | поиск по городу |
+| POST | /api/bookings | JWT | создать бронирование |
+| GET | /api/bookings/my | JWT | мои брони |
+| DELETE | /api/bookings/{id} | JWT | отмена |
